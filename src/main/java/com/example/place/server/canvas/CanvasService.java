@@ -19,6 +19,8 @@ public class CanvasService {
 
 	public static final int ROWS = 500;
 	public static final int COLUMNS = 500;
+	private final FluxSink<FeedMessage> updateSink;
+	private final Flux<FeedMessage> updates;
 
 	private Pixel[][] canvas;
 	private final CanvasRepository repository;
@@ -28,14 +30,18 @@ public class CanvasService {
 		this.repository = repository;
 		this.canvas = new Pixel[ROWS][COLUMNS];
 		TopicProcessor<FeedMessage> processor = TopicProcessor.create();
-		//TODO
+		this.updateSink = processor.sink();
+		this.updates = processor;
 		clearCanvas().blockLast();
 	}
 
+	public Flux<FeedMessage> updates() {
+		return updates;
+	}
+
 	public void resendCanvas() {
-		//TODO send that control message
-		new GridUpdate(canvas[0].length, canvas.length,
-				GridUpdate.UpdateInstruction.RELOAD);
+		updateSink.next(new GridUpdate(canvas[0].length, canvas.length,
+				GridUpdate.UpdateInstruction.RELOAD));
 	}
 
 	public Flux<Pixel> clearCanvas() {
@@ -88,7 +94,7 @@ public class CanvasService {
 
 	public Mono<Void> setPixelAt(int x, int y, Color color) {
 		return preparePixelAt(x, y, color)
-				//TODO send the pixel update
+				.doOnNext(updateSink::next)
 				.then();
 	}
 

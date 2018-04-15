@@ -4,6 +4,7 @@ import java.security.Principal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
+import com.example.place.server.data.FeedMessage;
 import com.example.place.server.data.PaintInstruction;
 import com.example.place.server.data.Pixel;
 import com.example.place.server.data.User;
@@ -12,6 +13,7 @@ import com.example.place.server.rate.RateLimitingService;
 import com.example.place.server.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +62,11 @@ public class CanvasController {
 						.status(HttpStatus.TOO_MANY_REQUESTS)
 						.body(t.getMessage())))
 				.defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
+	}
+
+	@GetMapping(value = "/canvas/feed", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<FeedMessage> canvas() {
+		return canvasService.updates();
 	}
 
 	@GetMapping(value = "/canvas/full", produces = MediaType.APPLICATION_JSON_VALUE)
