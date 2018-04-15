@@ -1,0 +1,10 @@
+{
+  "build": {
+    "type": "gradle",
+    "goal": "build"
+  },
+  "deploy": {
+    "jarName": "build/libs/collaborativeCanvas-0.0.1-SNAPSHOT.jar"
+  }
+}
+

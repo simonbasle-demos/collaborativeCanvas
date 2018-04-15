@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.w3.org/1999/html">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+</head>
+
+<body>
+<h1>Thanks for signin up <span th:text="*{user}"></span>!</h1>
+<form method="post" action="/login">
+    <input type="hidden" name="username" th:value="*{email}"/>
+    <input type="hidden" name="password" th:value="*{token}"/>
+    <button type="submit">Click here to start painting</button>
+</form>
+</body>
+</html>

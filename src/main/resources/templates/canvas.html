@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8"/>
+    <title>Collaborative Canvas</title>
+    <link rel="stylesheet" href="/webjars/bootstrap/3.3.7/css/bootstrap-theme.min.css"/>
+    <link rel="stylesheet" href="/webjars/bootstrap/3.3.7/css/bootstrap.min.css"/>
+</head>
+<body>
+<div>
+    <p id="canvasInfo" />
+    <p>
+        <input type="button" value="Reload Full Canvas" id="btnReload">
+        <input type="button" value="Zoom In" id="btnZoomIn">
+        <input type="button" value="Zoom Out" id="btnZoomOut">
+    </p>
+</div>
+
+<div class="header-panel" th:if="*{user}">
+    <p>
+        You are using Paint Token for <span th:text="*{user}"></span>
+    </p>
+    <p>
+        Paint pixel <span id="selectX">?</span>,<span id="selectY">?</span> in:
+        <input type="color" value="#fad345" name="palette" id="palette">
+        <input type="button" value="Paint!" id="btnPaint">
+        <span id="paintResult"></span>
+    </p>
+</div>
+<div class="container wrapper">
+    <canvas id="pixelArt" width=5500 height=5500></canvas>
+</div>
+
+<script type="text/javascript" src="/webjars/jquery/1.11.1/jquery.min.js"></script>
+<script type="text/javascript" src="/webjars/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+    // get canvas context
+    var canvas = document.getElementById('pixelArt').getContext('2d');
+
+    var gridX = 100; //TODO get from server
+    var gridY = 50; //TODO get from server
+    var defaultGridLine = 1;
+    var gridLine = defaultGridLine;
+    var pixel = 8;
+    var canvasWidth;
+    var canvasHeight;
+    var data;
+    var selectedPixelX = -1;
+    var selectedPixelY = -1;
+    var gridColor = '#aaaaaa';
+    var gridSelectColor = '#FF5954';
+    var gridSelectColorForRed = '#BFFAFF';
+
+    var paintResult = document.getElementById("paintResult");
+
+    clearCanvas();
+    initGrid();
+    loadData();
+
+    function clearCanvas() {
+        data = Array(gridX).fill("0").map(() => Array(gridY).fill([255, 255, 255, 255]));
+    }
+
+    function initGrid() {
+        canvasWidth = gridX * pixel + gridX * gridLine
+        canvasHeight = gridY * pixel + gridY * gridLine;
+
+        document.getElementById('canvasInfo').textContent = "Canvas is " + canvasWidth + "x" + canvasHeight + " pixels" + ", Grid is " + gridX + "x" + gridY + ", 1 pixel = " + pixel + " real pixels";
+
+        //draw the grid
+        canvas.strokeStyle = gridColor;
+        canvas.lineWidth = gridLine;
+        if (gridLine > 0) {
+            canvas.beginPath();
+            for (i = 0; i < gridX + 1; i++) {
+                var column = i * pixel + i * gridLine;
+                canvas.moveTo(column, 0);
+                canvas.lineTo(column, canvasHeight);
+            }
+            for (i = 0; i < gridY + 1; i++) {
+                var row = i * pixel + i * gridLine;
+                canvas.moveTo(0, row);
+                canvas.lineTo(canvasWidth, row);
+            }
+            canvas.stroke();
+        }
+    }
+
+    function loadData() {
+        fetch("/canvas/full").then(function(response) {
+            if (response.ok) {
+                response.json().then(function(full) {
+                    for (x = 0; x < gridX; x++) {
+                        var column = full[x];
+                        for (y = 0; y < gridY; y++) {
+                            var pixelData = column[y];
+                            if (pixelData !== undefined) {
+                                var red = pixelData.color.red;
+                                var green = pixelData.color.green;
+                                var blue = pixelData.color.blue;
+                                var alpha = pixelData.color.alpha;
+
+                                data[x][y] = [red, green, blue, alpha];
+                            }
+                        }
+                    }
+                    return redrawData();
+                });
+            } else {
+                console.log('Network request for canvas json failed with response ' + response.status + ': ' + response.statusText);
+            }
+        })
+    }
+
+    function redrawData() {
+        for (x = 0; x < gridX; x++) {
+            var column = data[x];
+            for (y = 0; y < gridY; y++) {
+                var pixelData = column[y];
+                if (pixelData !== undefined) {
+                    drawPixel(x, y, pixelData[0], pixelData[1], pixelData[2], pixelData[3]);
+                }
+            }
+        }
+    }
+
+    function drawPixel(x, y, r, g, b, a) {
+        canvas.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + (a / 255) + ')';
+        canvas.strokeStyle = canvas.fillStyle;
+        var realX = x * pixel + (x + 1) * gridLine;
+        var realY = y * pixel + (y + 1) * gridLine;
+        canvas.fillRect(realX, realY, pixel, pixel);
+        data[x][y] = [r, g, b, a];
+    }
+
+    function colorDistance(R1, G1, B1, R2, G2, B2) {
+        var cR=R1-R2;
+        var cG=G1-G2;
+        var cB=B1-B2;
+        var uR=R1+R2;
+        var distance = cR*cR*(2+uR/256) + cG*cG*4 + cB*cB*(2+(255-uR)/256);
+        return Math.round(distance / 1000);
+    }
+
+    function showSelection() {
+        var x = selectedPixelX;
+        var y = selectedPixelY;
+        if (x >= 0 && y >= 0 && gridLine > 0) {
+            var pixelData = data[x][y];
+            var r = pixelData[0];
+            var g = pixelData[1];
+            var b = pixelData[2];
+            var colorDiff = colorDistance(255, 0, 0, r, g, b);
+            if (colorDiff < 100) canvas.strokeStyle = gridSelectColorForRed;
+            else canvas.strokeStyle = gridSelectColor;
+
+            var w = Math.max(2, Math.floor(pixel / 5));
+            canvas.lineWidth = w;
+
+            var realX = x * pixel + (x + 1) * gridLine + w / 2;
+            var realY = y * pixel + (y + 1) * gridLine + w / 2;
+
+            canvas.strokeRect(realX, realY, pixel - w, pixel - w);
+        }
+    }
+
+    function clearSelection() {
+        paintResult.textContent = "";
+        var oldPixelX = selectedPixelX;
+        var oldPixelY = selectedPixelY;
+        if (oldPixelX >= 0 && oldPixelY >= 0) {
+            var pixelData = data[oldPixelX][oldPixelY];
+            if (pixelData !== undefined) {
+                drawPixel(oldPixelX, oldPixelY, 255, 255, 255, 255);
+                drawPixel(oldPixelX, oldPixelY, pixelData[0], pixelData[1], pixelData[2], pixelData[3]);
+            }
+        }
+    }
+
+    function zoomIn() {
+        pixel = pixel * 2;
+        if (pixel > 4) gridLine = defaultGridLine;
+        if (pixel > 64) {
+            pixel = 64;
+            console.log('pixel max 64px');
+        } else {
+            canvas.clearRect(0, 0, canvasWidth + 1, canvasHeight + 1);
+            initGrid();
+            redrawData();
+            showSelection();
+        }
+    }
+
+    function zoomOut() {
+        if (pixel > 2) {
+            pixel = pixel / 2;
+            canvas.clearRect(0, 0, canvasWidth + 1, canvasHeight + 1);
+            if (pixel <= 4) {
+                gridLine = 0;
+            }
+            initGrid();
+            redrawData();
+            showSelection();
+        } else {
+            console.log('minimum pixel size 3px')
+        }
+    }
+
+    function selectPixel(e) { // mouse click handler
+        clearSelection();
+        var canvasX = e.offsetX;
+        var canvasY = e.offsetY;
+
+        if (canvasX > canvasWidth || canvasY > canvasHeight) {
+            selectedPixelX = -1;
+            selectedPixelY = -1;
+            document.getElementById("selectX").textContent = "?";
+            document.getElementById("selectY").textContent = "?";
+            clearSelection();
+            return;
+        }
+
+        selectedPixelX = Math.floor(canvasX / (pixel + gridLine));
+        selectedPixelY = Math.floor(canvasY / (pixel + gridLine));
+
+        /* window.alert("canvas clicked at " + canvasX + ", " + canvasY + " which is pixel " + pixelX + "," + pixelY); */
+
+        showSelection();
+
+        document.getElementById("selectX").textContent = selectedPixelX;
+        document.getElementById("selectY").textContent = selectedPixelY;
+        // document.getElementById("palette").value = colorHex(selectedPixelX,selectedPixelY);
+    }
+
+    function colorHex(x, y) {
+        var pixelData = data[x][y];
+        var r = pixelData[0];
+        var g = pixelData[1];
+        var b = pixelData[2];
+
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    function hexToRgba(hex) {
+        var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            red: parseInt(result[1], 16),
+            green: parseInt(result[2], 16),
+            blue: parseInt(result[3], 16),
+            alpha: 255
+        } : null;
+    }
+
+
+    var pixelEventSource = new EventSource("/canvas/feed");
+    pixelEventSource.onmessage = function (e) {
+        var msg = JSON.parse(e.data);
+        if (msg.color !== undefined) {
+            drawPixel(msg.x, msg.y,
+                msg.color.red,
+                msg.color.green,
+                msg.color.blue,
+                msg.color.alpha);
+        }
+        else if (msg.instruction !== undefined) {
+            if (msg.instruction === "RELOAD") return loadData();
+            if (msg.instruction === "CLEAR") return clearCanvas().then(redrawData);
+        }
+        else {
+            console.warn("unrecognized message in feed: " + msg);
+        }
+    }
+
+    document.getElementById("btnReload").addEventListener("click", loadData, false);
+    document.getElementById("btnZoomIn").addEventListener("click", zoomIn, false);
+    document.getElementById("btnZoomOut").addEventListener("click", zoomOut, false);
+    document.getElementById("pixelArt").addEventListener("click", selectPixel, false);
+</script>
+
+<script th:if="*{user}">
+    document.getElementById("btnPaint").addEventListener("click", sendPaint, false);
+
+    function sendPaint() {
+        paintResult.textContent = "";
+
+        if (selectedPixelX >= 0 && selectedPixelY >= 0) {
+            var colorHex = document.getElementById("palette").value;
+            var colorRGBA = hexToRgba(colorHex);
+            var paintInstruction = {
+                x: selectedPixelX,
+                y: selectedPixelY,
+                color: colorRGBA
+            };
+
+            paintResult.textContent = "sending paint...";
+            fetch("/paint/",
+                {
+                    body: JSON.stringify(paintInstruction),
+                    cache: 'no-cache',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'text/plain',
+                        'Content-Type': 'application/json',
+                    },
+                    method: 'POST',
+                    redirect: 'error'
+                })
+                .then(function(res){
+                    console.log(res);
+                    paintResult.textContent = res.statusText;
+                })
+                .catch(function(res){
+                    console.log(res);
+                    paintResult.textContent = "Please Sign Up and/or Log In";
+                })
+        }
+    }
+
+</script>
+</body>
+</html>
