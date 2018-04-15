@@ -25,7 +25,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import static java.time.LocalDateTime.ofEpochSecond;
+import static java.time.ZoneOffset.UTC;
 import static org.springframework.http.ResponseEntity.accepted;
+import static reactor.core.publisher.Mono.error;
 
 /**
  * @author Simon Baslé
@@ -37,12 +40,15 @@ public class CanvasController {
 
 	private final UserRepository      userRepository;
 	private final PaintService        paintService;
+	private final RateLimitingService rateLimitingService;
 	private final CanvasService       canvasService;
 
 	@Autowired //yeah don't really need that anymore
-	public CanvasController(UserRepository userRepository, PaintService paintService, CanvasService canvasService) {
+	public CanvasController(UserRepository userRepository, PaintService paintService, RateLimitingService rateLimitingService,
+			CanvasService canvasService) {
 		this.userRepository = userRepository;
 		this.paintService = paintService;
+		this.rateLimitingService = rateLimitingService;
 		this.canvasService = canvasService;
 	}
 
@@ -52,11 +58,16 @@ public class CanvasController {
 	public Mono<ResponseEntity<String>> paintPixel(@RequestBody PaintInstruction paint, Mono<Principal> principalMono) {
 		return principalMono
 				.map(Principal::getName)
-				.flatMap(id -> userRepository.findById(id)
-						.switchIfEmpty(userRepository.insert(new User(id, 0L)))
-				)
-				.flatMap(u -> paintService.paint(paint.getX(), paint.getY(), paint.getColor(), u)
-					                           .thenReturn(u))
+				.flatMap(id -> userRepository.findById(id))
+				.flatMap(u -> {
+					boolean ok = rateLimitingService.checkRate(
+							ofEpochSecond(u.lastUpdate, 0, UTC));
+
+					if (ok) return paintService.paint(paint.getX(), paint.getY(), paint.getColor(), u)
+					                           .thenReturn(u);
+					else
+						return error(new RateLimitingException("you cannot paint yet"));
+				})
 				.map(u -> accepted().body("paint accepted"))
 				.onErrorResume(RateLimitingException.class, t -> Mono.just(ResponseEntity
 						.status(HttpStatus.TOO_MANY_REQUESTS)
