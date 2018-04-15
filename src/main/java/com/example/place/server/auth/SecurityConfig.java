@@ -24,6 +24,8 @@ public class SecurityConfig {
 		           .formLogin()
 		           .and()
 		           .authorizeExchange()
+		           .pathMatchers("/admin/**").hasRole("ADMIN")
+		           .pathMatchers("/paint/").authenticated()
 		           .anyExchange()
 		           .permitAll()
 		           .and()
