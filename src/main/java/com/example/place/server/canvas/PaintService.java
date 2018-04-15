@@ -27,6 +27,6 @@ public class PaintService {
 	public Mono<Void> paint(int x, int y, Color color, User user) {
 		//TODO mark the paint to LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
 		//TODO set the pixel and save the timestamp
-		return Mono.empty();
+		return canvasService.setPixelAt(x, y, color);
 	}
 }
